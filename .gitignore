@@ -1,0 +1,29 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# virtual env
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+
+# pip
+pip-log.txt
+
+# IDEs / editors
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs / databases
+*.log
+*.sqlite3
+
+# env files
+.env
