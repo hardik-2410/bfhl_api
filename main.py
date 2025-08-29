@@ -1,65 +1,97 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Union
+import os
 
-app = FastAPI()
+app = FastAPI(title="BFHL API")
 
-class InputData(BaseModel):
+class BFHLRequest(BaseModel):
     data: List[Union[str, int]]
+
+def make_user_id() -> str:
+    full_name = os.getenv("FULL_NAME", "john doe").strip().lower()
+    # convert any whitespace sequence to single underscore
+    full_name = "_".join(full_name.split())
+    dob = os.getenv("DOB_DDMMYYYY", "17091999").strip()
+    return f"{full_name}_{dob}"
+
+EMAIL = os.getenv("EMAIL", "john@xyz.com")
+ROLL = os.getenv("ROLL_NUMBER", "ABCD123")
 
 @app.get("/bfhl")
 def get_bfhl():
+    # often required by tests
     return {"operation_code": 1}
 
 @app.post("/bfhl")
-def post_bfhl(request: InputData):
-    user_id = "hardik_gupta_24101999"  # replace with your format if needed
-    email = "hardik@example.com"       # replace with your email
-    roll_number = "CS1234"             # replace with your roll number
+def post_bfhl(payload: BFHLRequest):
+    try:
+        odd_numbers: List[str] = []
+        even_numbers: List[str] = []
+        alphabets: List[str] = []
+        special_characters: List[str] = []
+        # Collect all individual alphabetical characters (preserve original character case)
+        letter_chars: List[str] = []
+        # Keep numeric tokens as strings
+        numeric_tokens: List[str] = []
 
-    alphabets = []
-    numbers = []
-    highest_alphabet = None
-    specials = []
-    even_numbers = []
-    odd_numbers = []
-    num_sum = 0
-    concat = ""
+        for item in payload.data:
+            s = str(item)
 
-    for item in request.data:
-        item_str = str(item)
+            # Pure number (only digits)
+            if s.isdigit():
+                numeric_tokens.append(s)
+                n = int(s)
+                if n % 2 == 0:
+                    even_numbers.append(s)
+                else:
+                    odd_numbers.append(s)
 
-        if item_str.isalpha():
-            alphabets.append(item_str)
-            concat += item_str
-            if highest_alphabet is None or item_str.upper() > highest_alphabet.upper():
-                highest_alphabet = item_str
+            # Pure alphabet token (like "a" or "ABcD")
+            elif s.isalpha():
+                alphabets.append(s.upper())          # token -> uppercase in alphabets array
+                for ch in s:
+                    if ch.isalpha():
+                        letter_chars.append(ch)    # preserve original case for concat_string processing
 
-        elif item_str.isdigit():
-            num = int(item_str)
-            numbers.append(num)
-            concat += item_str
-            num_sum += num
-            if num % 2 == 0:
-                even_numbers.append(num)
+            # Mixed or special tokens (e.g., "$", "ab#1")
             else:
-                odd_numbers.append(num)
+                special_characters.append(s)
+                for ch in s:
+                    if ch.isalpha():
+                        letter_chars.append(ch)    # still extract letters for concat_string
 
-        else:
-            specials.append(item_str)
-            concat += item_str
+        # Sum of numeric tokens, returned as string
+        total_sum = str(sum(int(x) for x in numeric_tokens)) if numeric_tokens else "0"
 
-    return {
-        "is_success": True,
-        "user_id": user_id,
-        "email": email,
-        "roll_number": roll_number,
-        "alphabets": alphabets,
-        "numbers": numbers,
-        "highest_alphabet": highest_alphabet,
-        "special_characters": specials,
-        "even_numbers": even_numbers,
-        "odd_numbers": odd_numbers,
-        "sum": num_sum,
-        "concat": concat
-    }
+        # Build concat_string:
+        #  - take all extracted alphabetical characters in input-order (preserve their original case)
+        #  - reverse that string
+        #  - apply alternating caps starting with UPPER for index 0, lower for index 1, etc.
+        reversed_letters = "".join(letter_chars)[::-1]  # reversed preserving original char values
+        out_chars = []
+        for i, ch in enumerate(reversed_letters):
+            out_chars.append(ch.upper() if i % 2 == 0 else ch.lower())
+        concat_string = "".join(out_chars)
+
+        response = {
+            "is_success": True,
+            "user_id": make_user_id(),
+            "email": EMAIL,
+            "roll_number": ROLL,
+            "odd_numbers": odd_numbers,              # numbers as strings
+            "even_numbers": even_numbers,            # numbers as strings
+            "alphabets": alphabets,                  # tokens that were purely alphabetic, uppercased
+            "special_characters": special_characters,
+            "sum": total_sum,                        # sum as string
+            "concat_string": concat_string
+        }
+        return JSONResponse(status_code=200, content=response)
+
+    except Exception as e:
+        # graceful error response with is_success=false
+        return JSONResponse(status_code=400, content={
+            "is_success": False,
+            "error": str(e)
+        })
